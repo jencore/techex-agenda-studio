@@ -52,38 +52,71 @@ app.post('/api/fetch-agenda', async (req, res) => {
 
   const fetch = await getFetch();
 
+  // Multiple User-Agent strings to try
+  const userAgents = [
+    // Googlebot - many sites whitelist crawlers
+    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+    // Regular Chrome on Mac
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    // Chrome on Windows
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+    // Firefox
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:125.0) Gecko/20100101 Firefox/125.0',
+  ];
+
   let html;
-  try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-GB,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Cache-Control': 'max-age=0',
-        'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"Windows"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Upgrade-Insecure-Requests': '1',
-      },
-      redirect: 'follow',
-      timeout: 15000,
-    });
+  let lastError;
 
-    if (!response.ok) {
-      return res.status(502).json({
-        error: `The target site returned HTTP ${response.status}. The page may require login or doesn't exist.`
+  for (const ua of userAgents) {
+    try {
+      const isGooglebot = ua.includes('Googlebot');
+      const headers = isGooglebot
+        ? {
+            'User-Agent': ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+          }
+        : {
+            'User-Agent': ua,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-GB,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Sec-Ch-Ua': ua.includes('Chrome') ? '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"' : undefined,
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': ua.includes('Macintosh') ? '"macOS"' : '"Windows"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1',
+            'DNT': '1',
+          };
+
+      // Remove undefined values
+      Object.keys(headers).forEach(k => headers[k] === undefined && delete headers[k]);
+
+      const response = await fetch(url, {
+        headers,
+        redirect: 'follow',
+        timeout: 15000,
       });
-    }
 
-    html = await response.text();
-  } catch (err) {
+      if (response.ok) {
+        html = await response.text();
+        if (html && html.length >= 200) break; // success
+      } else {
+        lastError = `HTTP ${response.status}`;
+      }
+    } catch (err) {
+      lastError = err.message;
+    }
+  }
+
+  if (!html || html.length < 200) {
     return res.status(502).json({
-      error: `Could not reach the page: ${err.message}`
+      error: `Could not fetch the page (${lastError || 'no content'}). The site may block automated access — try the "Paste HTML" option instead.`
     });
   }
 
@@ -116,6 +149,18 @@ app.post('/api/parse-html', (req, res) => {
     return res.status(422).json({ error: 'No sessions found in the pasted HTML.' });
   }
   res.json({ sessions, meta, strategy, sessionCount: sessions.length });
+});
+
+// ── Show server outbound IP (for whitelisting) ────────
+app.get('/api/my-ip', async (req, res) => {
+  try {
+    const fetch = await getFetch();
+    const r = await fetch('https://api.ipify.org?format=json');
+    const data = await r.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Fallback: serve index.html for any non-API route ──
