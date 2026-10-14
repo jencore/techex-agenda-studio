@@ -144,6 +144,23 @@ textarea{resize:vertical;min-height:72px;font-family:monospace;font-size:12px}
 .color-row{display:flex;gap:8px;align-items:center}
 .color-row input[type=color]{width:36px;height:36px;border-radius:5px;border:1px solid var(--bdr);cursor:pointer;padding:2px;background:var(--bg);flex-shrink:0}
 .color-row input[type=text]{flex:1;font-family:monospace;font-size:12px}
+
+/* ── Brand palette swatches ─────────────────────────── */
+.palette-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}
+.pal-swatch{
+  border-radius:7px;padding:6px 4px;cursor:pointer;border:2px solid transparent;
+  display:flex;flex-direction:column;align-items:center;gap:4px;transition:all .15s;
+  font-size:10px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.4);
+  text-align:center;line-height:1.2;min-height:52px;justify-content:center;
+}
+.pal-swatch:hover{transform:scale(1.05);border-color:rgba(255,255,255,.5)}
+.pal-swatch.selected{border-color:#fff;box-shadow:0 0 0 2px var(--accent)}
+.pal-swatch.gradient-swatch{font-size:9px}
+.gradient-toggle{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:12px;font-weight:600;cursor:pointer;user-select:none}
+.gradient-toggle input{cursor:pointer}
+.gradient-preview{height:28px;border-radius:6px;margin-bottom:8px;border:1px solid var(--bdr);transition:background .2s}
+.gradient-pickers{display:flex;gap:8px}
+.gradient-pickers .color-row{flex:1}
 .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 @media(max-width:600px){.grid2{grid-template-columns:1fr}}
 .status-bar{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:6px;font-size:13px;font-weight:500}
@@ -255,6 +272,93 @@ textarea{resize:vertical;min-height:72px;font-family:monospace;font-size:12px}
 </div>
 
 <script>
+/* ── Brand Palette ───────────────────────────────────── */
+const BRAND_PALETTE = [
+  { id:'ai',    label:'AI',   color:'#e72072', gradient:false },
+  { id:'pai',   label:'PAI',  color:'#14b8a6', color2:'#2c7be5', gradient:true },
+  { id:'iar',   label:'IAR',  color:'#8ea0b4', gradient:false },
+  { id:'dt',    label:'DT',   color:'#2d8183', gradient:false },
+  { id:'iot',   label:'IoT',  color:'#00ccff', gradient:false },
+  { id:'cy',    label:'CY',   color:'#ec6613', gradient:false },
+  { id:'ec',    label:'EC',   color:'#15cc93', gradient:false },
+  { id:'dc',    label:'DC',   color:'#1a41ff', gradient:false },
+  { id:'lh',    label:'Learning\nHub', color:'#912581', color2:'#e8604b', color3:'#24abe2', gradient:true, tricolor:true },
+  { id:'custom',label:'Custom',color:'#CEA93A', gradient:false },
+];
+
+function gradientCSS(a) {
+  if (a.useGradient && a.gradColor1 && a.gradColor2) {
+    if (a.gradColor3) {
+      return `linear-gradient(135deg, ${a.gradColor1}, ${a.gradColor2}, ${a.gradColor3})`;
+    }
+    return `linear-gradient(135deg, ${a.gradColor1}, ${a.gradColor2})`;
+  }
+  return a.highlightColor || '#CEA93A';
+}
+
+function renderPaletteSwatches(a) {
+  return BRAND_PALETTE.map(p => {
+    let bg;
+    if (p.tricolor) bg = `linear-gradient(135deg,${p.color},${p.color2},${p.color3})`;
+    else if (p.gradient) bg = `linear-gradient(135deg,${p.color},${p.color2})`;
+    else bg = p.color;
+    const isActive = a.paletteId === p.id;
+    const label = p.label.replace('\n','<br>');
+    return `<div class="pal-swatch${isActive?' selected':''}" style="background:${bg}"
+      onclick="applyPalette('${p.id}')" title="${p.label}">${label}</div>`;
+  }).join('');
+}
+
+function applyPalette(pid) {
+  const p = BRAND_PALETTE.find(x => x.id === pid);
+  if (!p) return;
+  const updates = { paletteId: pid };
+  if (p.gradient) {
+    updates.useGradient = true;
+    updates.gradColor1 = p.color;
+    updates.gradColor2 = p.color2;
+    updates.gradColor3 = p.tricolor ? p.color3 : null;
+    updates.highlightColor = p.color;
+    updates.rowA = p.color;
+    updates.rowB = p.tricolor ? p.color3 : p.color2;
+  } else {
+    updates.useGradient = false;
+    updates.highlightColor = p.color;
+    // Darken slightly for row B
+    updates.rowA = p.color;
+    updates.rowB = darken(p.color, 15);
+  }
+  Object.assign(agendas.find(a=>a.id===activeId), updates);
+  saveState(); renderEditor(); renderSidebar();
+}
+
+function darken(hex, pct) {
+  const n = parseInt(hex.slice(1),16);
+  const r = Math.max(0,((n>>16)&255)-pct);
+  const g = Math.max(0,((n>>8)&255)-pct);
+  const b = Math.max(0,(n&255)-pct);
+  return '#'+[r,g,b].map(x=>x.toString(16).padStart(2,'0')).join('');
+}
+
+function toggleGradient(on) {
+  const a = agendas.find(x=>x.id===activeId); if(!a) return;
+  a.useGradient = on;
+  if (on && !a.gradColor1) { a.gradColor1 = a.highlightColor; a.gradColor2 = a.rowA; }
+  saveState(); renderEditor(); renderSidebar();
+}
+
+function patchGradColor(which, val) {
+  const a = agendas.find(x=>x.id===activeId); if(!a) return;
+  if (which===1) { a.gradColor1=val; a.highlightColor=val; a.rowA=val; }
+  else           { a.gradColor2=val; a.rowB=val; }
+  a.paletteId='custom';
+  const hexId = which===1 ? 'e-col-g1-hex' : 'e-col-g2-hex';
+  const el = document.getElementById(hexId); if(el) el.value=val;
+  const prev = document.getElementById('grad-preview');
+  if(prev) prev.style.background = gradientCSS(a);
+  saveState(); renderSidebar();
+}
+
 /* ── State ───────────────────────────────────────────── */
 let agendas = loadState();
 let activeId = agendas[0]?.id ?? null;
@@ -265,6 +369,8 @@ function newAgenda(o={}) {
     url: '', label: 'New agenda',
     trackName: 'GOLD TRACK', subtitle: '', dayLabel: 'DAY 1',
     highlightColor: '#CEA93A', rowA: '#0E7070', rowB: '#0C6060',
+    paletteId: 'custom', useGradient: false,
+    gradColor1: '#CEA93A', gradColor2: '#0E7070', gradColor3: null,
     pageNum: '1', pageTotal: '1',
     logoDataUrl: null, logoName: null,
     sessions: [], status: 'idle', err: null, ...o
@@ -367,24 +473,47 @@ function renderEditor() {
             </div>
           </div>
           <div class="field">
-            <label>Track bar colour</label>
-            <div class="color-row">
-              <input type="color" id="e-col-h" value="${esc(a.highlightColor)}" oninput="patchColor('highlightColor',this.value,'e-col-h-hex')">
-              <input type="text" id="e-col-h-hex" value="${esc(a.highlightColor)}" maxlength="7" oninput="patchColorHex('highlightColor',this.value,'e-col-h')">
+            <label>Track colour <span class="lhint">pick a brand or set custom</span></label>
+            <div class="palette-grid" id="palette-swatches">
+              ${renderPaletteSwatches(a)}
+            </div>
+            <label class="gradient-toggle">
+              <input type="checkbox" id="grad-toggle" ${a.useGradient?'checked':''} onchange="toggleGradient(this.checked)">
+              Use gradient (two colours)
+            </label>
+            <div id="grad-preview" class="gradient-preview" style="display:${a.useGradient?'block':'none'};background:${gradientCSS(a)}"></div>
+            <div id="grad-pickers" style="display:${a.useGradient?'flex':'none'}" class="gradient-pickers">
+              <div class="color-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+                <label style="font-size:11px">Colour 1</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input type="color" id="e-col-g1" value="${esc(a.gradColor1||a.highlightColor)}" oninput="patchGradColor(1,this.value)">
+                  <input type="text" id="e-col-g1-hex" value="${esc(a.gradColor1||a.highlightColor)}" maxlength="7" style="width:80px;font-family:monospace;font-size:12px" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){patchGradColor(1,this.value)}">
+                </div>
+              </div>
+              <div class="color-row" style="flex-direction:column;align-items:flex-start;gap:4px">
+                <label style="font-size:11px">Colour 2</label>
+                <div style="display:flex;gap:6px;align-items:center">
+                  <input type="color" id="e-col-g2" value="${esc(a.gradColor2||a.rowA)}" oninput="patchGradColor(2,this.value)">
+                  <input type="text" id="e-col-g2-hex" value="${esc(a.gradColor2||a.rowA)}" maxlength="7" style="width:80px;font-family:monospace;font-size:12px" oninput="if(/^#[0-9a-fA-F]{6}$/.test(this.value)){patchGradColor(2,this.value)}">
+                </div>
+              </div>
+            </div>
+            <div id="solid-pickers" style="display:${a.useGradient?'none':'block'}">
+              <div class="color-row" style="margin-bottom:6px">
+                <input type="color" id="e-col-h" value="${esc(a.highlightColor)}" oninput="patchColor('highlightColor',this.value,'e-col-h-hex')">
+                <input type="text" id="e-col-h-hex" value="${esc(a.highlightColor)}" maxlength="7" oninput="patchColorHex('highlightColor',this.value,'e-col-h')" placeholder="#rrggbb">
+              </div>
             </div>
           </div>
           <div class="field">
-            <label>Row colour A</label>
-            <div class="color-row">
+            <label>Row colours</label>
+            <div class="color-row" style="margin-bottom:6px">
               <input type="color" id="e-col-a" value="${esc(a.rowA)}" oninput="patchColor('rowA',this.value,'e-col-a-hex')">
-              <input type="text" id="e-col-a-hex" value="${esc(a.rowA)}" maxlength="7" oninput="patchColorHex('rowA',this.value,'e-col-a')">
+              <input type="text" id="e-col-a-hex" value="${esc(a.rowA)}" maxlength="7" oninput="patchColorHex('rowA',this.value,'e-col-a')" placeholder="Row A">
             </div>
-          </div>
-          <div class="field">
-            <label>Row colour B</label>
             <div class="color-row">
               <input type="color" id="e-col-b" value="${esc(a.rowB)}" oninput="patchColor('rowB',this.value,'e-col-b-hex')">
-              <input type="text" id="e-col-b-hex" value="${esc(a.rowB)}" maxlength="7" oninput="patchColorHex('rowB',this.value,'e-col-b')">
+              <input type="text" id="e-col-b-hex" value="${esc(a.rowB)}" maxlength="7" oninput="patchColorHex('rowB',this.value,'e-col-b')" placeholder="Row B">
             </div>
           </div>
         </div>
@@ -510,9 +639,12 @@ function parsePastedHtml() {
 
 /* ── SVG Builder ─────────────────────────────────────── */
 function buildSVG(a) {
-  const navy='#0E1428', gold=a.highlightColor||'#CEA93A';
+  const navy='#0E1428';
+  const gold=a.highlightColor||'#CEA93A';
   const tealA=a.rowA||'#0E7070', tealB=a.rowB||'#0C6060';
-  const pill=darken(tealA,.15);
+  const hasGrad = a.useGradient && a.gradColor1 && a.gradColor2;
+  const gradId = 'trackGrad';
+  const pill=darken(tealA,15);
   const FONT='Montserrat, Arial, sans-serif';
   const W=1080,HDR=240,GOLD_H=50,FTR=90;
   const PX=28,PILLW=220,PILLH=54,PILLR=6;
@@ -543,6 +675,15 @@ function buildSVG(a) {
   const SVG_H=TOTAL_HDR+totalContentH+FTR;
   const parts=[];
 
+  // SVG defs for gradient if needed
+  let defs = '';
+  if (hasGrad) {
+    const stops = a.gradColor3
+      ? `<stop offset="0%" stop-color="${a.gradColor1}"/><stop offset="50%" stop-color="${a.gradColor2}"/><stop offset="100%" stop-color="${a.gradColor3}"/>`
+      : `<stop offset="0%" stop-color="${a.gradColor1}"/><stop offset="100%" stop-color="${a.gradColor2}"/>`;
+    defs = `<defs><linearGradient id="${gradId}" x1="0%" y1="0%" x2="100%" y2="0%">${stops}</linearGradient></defs>`;
+  }
+  parts.push(defs);
   parts.push(`<rect width="${W}" height="${SVG_H}" fill="${navy}"/>`);
   parts.push(`<rect x="0" y="0" width="${W}" height="${TOTAL_HDR}" fill="${navy}"/>`);
   parts.push(`<text x="${W/2}" y="80" font-family="${FONT}" font-weight="800" font-size="32" fill="#FFFFFF" text-anchor="middle" letter-spacing="3">${esc(a.dayLabel||'DAY 1')}</text>`);
@@ -557,7 +698,8 @@ function buildSVG(a) {
   }
 
   const goldY=TOTAL_HDR-GOLD_H;
-  parts.push(`<rect x="0" y="${goldY}" width="${W}" height="${GOLD_H}" fill="${gold}"/>`);
+  const trackFill = hasGrad ? `url(#${gradId})` : gold;
+  parts.push(`<rect x="0" y="${goldY}" width="${W}" height="${GOLD_H}" fill="${trackFill}"/>`);
   parts.push(`<text x="${W/2}" y="${goldY+32}" font-family="${FONT}" font-weight="700" font-size="22" fill="#FFFFFF" text-anchor="middle" letter-spacing="4">${esc(a.trackName||'GOLD TRACK')}</text>`);
 
   let y=TOTAL_HDR;
