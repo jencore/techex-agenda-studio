@@ -10,6 +10,9 @@ const SINGLE_TIME_RE = /^(\d{1,2}[:.]\d{2})\s*(?:AM|PM)?$/i;
 const BREAK_RE = /\b(break|lunch|networking|coffee|registration|drinks|exhibition)\b/i;
 const TYPE_RE = /^(Panel(?:\s+Discussion)?|Presentation|Fireside Chat|Keynote|Workshop|Roundtable|Interview|Demo|Q&A|Chairperson(?:'s)?\s*(?:Opening|Closing)?\s*(?:Remarks)?)[:\-–]\s*/i;
 
+// Words that indicate UI chrome / navigation — never a valid session title
+const UI_NOISE_RE = /^(agendas?|schedule|programme|program|home|menu|search|filter|login|sign\s*in|register|sponsors?|exhibitors?|speakers?|contact|about|back|next|previous|close|more|less|view\s*all|download|share|add\s*to\s*calendar|my\s*agenda|save|saved|bookmark|favourites?|favorites?)$/i;
+
 function fmtTime(t) {
   return t.replace('.', ':').replace(/(\d)(AM|PM)/i, '$1 $2').trim();
 }
@@ -117,7 +120,7 @@ function parseH4Strategy($) {
 
   $('h3, h4').each((_, hEl) => {
     const rawTitle = $(hEl).text().trim();
-    if (!rawTitle || rawTitle.length < 4 || TIME_RE.test(rawTitle)) return;
+    if (!rawTitle || rawTitle.length < 4 || TIME_RE.test(rawTitle) || UI_NOISE_RE.test(rawTitle)) return;
 
     // Walk back through previous siblings to find a time
     let time = '';
@@ -181,7 +184,7 @@ function parseContainerStrategy($) {
 
     const titleEl = $el.find('h2,h3,h4,h5,[class*="title" i],[class*="name" i]').first();
     const rawTitle = titleEl.text().trim() || $el.find('strong').first().text().trim();
-    if (!rawTitle || rawTitle.length < 4 || seen.has(rawTitle + time)) return;
+    if (!rawTitle || rawTitle.length < 4 || UI_NOISE_RE.test(rawTitle) || seen.has(rawTitle + time)) return;
     seen.add(rawTitle + time);
 
     const isBreak = BREAK_RE.test(rawTitle);
@@ -218,7 +221,7 @@ function parseGenericStrategy($) {
       const $next = $(allEls[j]);
       if ($next.children().length > 0) continue;
       const t = $next.text().trim();
-      if (t.length > 4 && !TIME_RE.test(t) && !seen.has(t + time)) {
+      if (t.length > 4 && !TIME_RE.test(t) && !UI_NOISE_RE.test(t) && !seen.has(t + time)) {
         const isBreak = BREAK_RE.test(t);
         const { sessionType, sessionTitle } = splitType(t);
         seen.add(t + time);
