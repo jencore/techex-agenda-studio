@@ -195,13 +195,14 @@ function parseEMGStrategy($) {
 
     // Extract speakers from speaker loop items inside this slot
     const speakers = [];
+    const seenSpeakers = new Set();
     if (!isBreak) {
-      $el.find('[class*="speaker-loop-item"], [class*="e-loop-item"]').each((_, sp) => {
+      $el.find('a.speaker-loop-item').each((_, sp) => {
         const $sp = $(sp);
-        // Name: theme-post-title widget
         const name = $sp.find('[data-widget_type="theme-post-title.default"] .elementor-heading-title').first().text().trim()
           || $sp.find('h2,h3,h4,strong').first().text().trim();
-        if (!name) return;
+        if (!name || seenSpeakers.has(name)) return;
+        seenSpeakers.add(name);
         const headings = $sp.find('[data-widget_type="heading.default"] .elementor-heading-title');
         const role = $(headings[0]).text().trim() || '';
         const company = $(headings[1]).text().trim() || '';
