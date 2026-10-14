@@ -168,6 +168,53 @@ function parseH4Strategy($) {
 }
 
 /**
+ * Strategy 2b: EMG Agenda plugin (ai-expo.net / techexevent.com style)
+ * Each session is a div.agenda-slot containing .agenda-slot-time and h4.agenda-slot-heading
+ */
+function parseEMGStrategy($) {
+  const sessions = [];
+  const seen = new Set();
+
+  $('.agenda-slot').each((_, el) => {
+    const $el = $(el);
+    const timeEl = $el.find('.agenda-slot-time').first();
+    const titleEl = $el.find('.agenda-slot-heading').first();
+
+    const timeRaw = timeEl.text().trim();
+    const rawTitle = titleEl.text().trim();
+
+    if (!timeRaw || !rawTitle || rawTitle.length < 4) return;
+    const tm = timeRaw.match(TIME_RE);
+    if (!tm) return;
+    const time = fmtTimeRange(tm);
+    if (UI_NOISE_RE.test(rawTitle) || seen.has(rawTitle + time)) return;
+    seen.add(rawTitle + time);
+
+    const isBreak = BREAK_RE.test(rawTitle);
+    const { sessionType, sessionTitle } = splitType(rawTitle);
+
+    // Extract speakers from speaker loop items inside this slot
+    const speakers = [];
+    if (!isBreak) {
+      $el.find('[class*="speaker-loop-item"], [class*="e-loop-item"]').each((_, sp) => {
+        const $sp = $(sp);
+        // Name: theme-post-title widget
+        const name = $sp.find('[data-widget_type="theme-post-title.default"] .elementor-heading-title').first().text().trim()
+          || $sp.find('h2,h3,h4,strong').first().text().trim();
+        if (!name) return;
+        const headings = $sp.find('[data-widget_type="heading.default"] .elementor-heading-title');
+        const role = $(headings[0]).text().trim() || '';
+        const company = $(headings[1]).text().trim() || '';
+        speakers.push({ name, role, company });
+      });
+    }
+
+    sessions.push({ time, type: sessionType, title: sessionTitle, speakers, isBreak, rawTitle });
+  });
+  return sessions;
+}
+
+/**
  * Strategy 3: Look for session container elements with time + title inside
  */
 function parseContainerStrategy($) {
@@ -240,7 +287,10 @@ function parseGenericStrategy($) {
 function parseAgendaHtml(html) {
   const $ = cheerio.load(html);
 
-  let sessions = parseH2Strategy($);
+  let sessions = parseEMGStrategy($);
+  if (sessions.length) return { sessions, strategy: 'emg' };
+
+  sessions = parseH2Strategy($);
   if (sessions.length) return { sessions, strategy: 'h2' };
 
   sessions = parseH4Strategy($);
