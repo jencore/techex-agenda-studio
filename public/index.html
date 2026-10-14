@@ -632,7 +632,11 @@ function parsePastedHtml() {
   if(!html){alert('Paste the page HTML first');return;}
   // Send to server for parsing
   fetch('/api/parse-html',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({html,url:a.url||''})})
-    .then(r=>r.json()).then(data=>{
+    .then(r=>{
+      if(!r.ok&&r.headers.get('content-type')&&!r.headers.get('content-type').includes('json'))
+        throw new Error('Server error ('+r.status+') — check Railway logs');
+      return r.json();
+    }).then(data=>{
       if(data.error){alert('Parse error: '+data.error);return;}
       a.sessions=data.sessions;
       if(data.meta){if(data.meta.dayLabel)a.dayLabel=data.meta.dayLabel;if(data.meta.subtitle)a.subtitle=data.meta.subtitle;if(data.meta.trackName)a.trackName=data.meta.trackName;}
